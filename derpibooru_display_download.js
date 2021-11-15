@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         derpibooru.org display download 11
+// @name         derpibooru.org display download
 // @namespace    http://tampermonkey.net/
-// @version      0.1
+// @version      1.1.2
 // @description
 // @author       K
 // @include      http*://derpibooru.org/images/*
@@ -19,6 +19,7 @@ let name_format = NameFormat.DOWNLOAD_ELE_REG;
 let img_id; // 图片id
 let img_rating;
 let img_is_hidden = false;
+let img_src_error;
 let img_url_display;    // 当前页面展示的图片链接
 let img_filename_from_download_ele;  // 页面下载所对应的url
 let img_filename_for_buttom;    // 用于按钮下载的文件名
@@ -37,12 +38,17 @@ function download_start(img_url, file_name) {
             referer: 'https://derpibooru.org/'
         },
         responseType: 'blob',	/// @@ 返回值格式
-        onabort: function () { },	/// @@ 下载终止
+        onabort: function () { 
+            alert("GM_xmlhttpRequest onabort");
+        },	/// @@ 下载终止
         onprogress: function (xhr) {
         },
         onload: function (xhr) {	/// @@ 请求已加载
             let blobURL = window.URL.createObjectURL(xhr.response); // 返回的blob对象是整个response，而非responseText
             download_to_disk(blobURL, file_name); // @@ 下载到硬盘
+        },
+        onerror : function(){
+            alert("GM_xmlhttpRequest onerror");
         }
     });
 }
@@ -107,18 +113,26 @@ function get_img_rating() {
 /**
  * 图片是否隐藏
  */
-function is_img_hidden(){
-   let xx = document.getElementsByClassName("hidden image-show");
-    if (xx.length){
+function is_img_hidden() {
+    let xx = document.getElementsByClassName("hidden image-show");
+    if (xx.length) {
         img_is_hidden = true;
     }
 }
-function show_img(){
+function is_msg_err(){
+    let xx = document.getElementsByClassName("tag dropdown")
+    for (let i = 0; i < xx.length; i++) {
+        if (xx[i].getAttribute("data-tag-category") == "error") {
+            img_src_error = xx[i].getAttribute("data-tag-slug");
+        }
+    }
+}
+function show_img() {
     let xx = document.getElementsByClassName("hidden image-show");
     for (let i = 0; i < xx.length; i++) {
         xx[i].setAttribute("class", "image-show");
     }
-    xx =  document.getElementsByClassName("block block--fixed block--warning block--no-margin image-filtered");
+    xx = document.getElementsByClassName("block block--fixed block--warning block--no-margin image-filtered");
     for (let i = 0; i < xx.length; i++) {
         let xxx = xx[i].getElementsByTagName("p");
         xx[i].removeChild(xxx[0]);
@@ -141,9 +155,15 @@ function make_img_filename__imgid_artist_to_end() {
             }
         }
     }
-    function match_downloadele() {
+    function match_downloadele() { // ## 解析名字
         let downloadele_head = img_id + "__" + img_rating + "_" + artist_list.join("_");
-        let ret = img_filename_from_download_ele.match(downloadele_head + "_" + "([\\w\\+]+)" + "." + "([\\w\\+]+)");
+        downloadele_head = downloadele_head.replace("\+", "\\+");
+        downloadele_head = downloadele_head.replace("\-", "\\-");
+        let reg = RegExp(downloadele_head + "_" + "([\\w\\+\\-]+)" + "." + "([\\w\\+\\-]+)");
+        let ret = img_filename_from_download_ele.match(reg);
+        if (ret == null) {
+            alert("图像匹配错误");
+        }
         img_mid = ret[1];
         img_end = ret[2];
     }
@@ -207,6 +227,7 @@ if (site_download_place > 0) {
     console.log("[img_rating]=" + img_rating);
     is_img_hidden();
     console.log("[img_is_hidden]=" + img_is_hidden);
+    is_msg_err();
     show_img();
     set_download_button();
 }
