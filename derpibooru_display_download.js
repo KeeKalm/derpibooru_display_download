@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         derpibooru.org display download
+// @name         derpibooru.org display download 11
 // @namespace    http://tampermonkey.net/
 // @version      0.1
 // @description
@@ -9,14 +9,27 @@
 // @grant       GM_download
 // @connect     derpicdn.net
 // ==/UserScript==
+let NameFormat = {
+    DOWNLOAD_ELE_ORG: 1, // 原始下载元素
+    DOWNLOAD_ELE_REG: 2, // 调整下载元素
+}
+let name_format = NameFormat.DOWNLOAD_ELE_REG;
 
-let img_info = new Object();
+
+let img_id; // 图片id
+let img_rating;
+let img_is_hidden = false;
+let img_url_display;    // 当前页面展示的图片链接
+let img_filename_from_download_ele;  // 页面下载所对应的url
+let img_filename_for_buttom;    // 用于按钮下载的文件名
+
+let site_download_place = 0;
 
 /**
  * 跨域请求下载相应
- * @param {*} img_url 
+ * @param {*} img_url
  */
-function download_start(img_url) {
+function download_start(img_url, file_name) {
     GM_xmlhttpRequest({
         method: 'GET',
         url: img_url, /// @@ 下载所对应的URL
@@ -29,15 +42,15 @@ function download_start(img_url) {
         },
         onload: function (xhr) {	/// @@ 请求已加载
             let blobURL = window.URL.createObjectURL(xhr.response); // 返回的blob对象是整个response，而非responseText
-            download_to_disk(blobURL, fullFileName); // @@ 下载到硬盘
+            download_to_disk(blobURL, file_name); // @@ 下载到硬盘
         }
     });
 }
 
 /**
  * blob下载到磁盘
- * @param {*} blobURL 
- * @param {*} fullFileName 
+ * @param {*} blobURL
+ * @param {*} fullFileName
  */
 function download_to_disk(blobURL, fullFileName) {
     GM_download({
@@ -48,56 +61,153 @@ function download_to_disk(blobURL, fullFileName) {
         }
     });
 }
+/**
+ * 获取显示图片的url
+ */
+function get_img_display_url() {
+    let x = document.getElementById("image-display");
+    img_url_display = x.src;
+}
 
-// // 确定显图片
-// var x=document.getElementById("image-display");
-// var img_display_link = x.src;
+/**
+ * 获取下载元素的文件名
+ */
+function get_img_filename_from_download_ele() {
+    let x = document.getElementsByTagName("a");
+    let img_link;
+    for (site_download_place = 0; site_download_place < x.length; site_download_place++) {
+        if (x[site_download_place].title == "Download (tags in filename)") {
+            img_link = x[site_download_place].href;
+            break;
+        }
+    }
+    let j = img_link.lastIndexOf("/") + 1;
+    img_filename_from_download_ele = img_link.substring(j);
+}
+/**
+ * 获取图片id
+ */
+function get_img_id() {
+    let xx = document.getElementsByClassName("upvotes")
+    for (let i = 0; i < xx.length; i++) {
+        img_id = xx[i].getAttribute("data-image-id");
+    }
+}
+/**
+ * 获取图片筛选
+ */
+function get_img_rating() {
+    let xx = document.getElementsByClassName("tag dropdown")
+    for (let i = 0; i < xx.length; i++) {
+        if (xx[i].getAttribute("data-tag-category") == "rating") {
+            img_rating = xx[i].getAttribute("data-tag-slug");
+        }
+    }
+}
+/**
+ * 图片是否隐藏
+ */
+function is_img_hidden(){
+   let xx = document.getElementsByClassName("hidden image-show");
+    if (xx.length){
+        img_is_hidden = true;
+    }
+}
+function show_img(){
+    let xx = document.getElementsByClassName("hidden image-show");
+    for (let i = 0; i < xx.length; i++) {
+        xx[i].setAttribute("class", "image-show");
+    }
+    xx =  document.getElementsByClassName("block block--fixed block--warning block--no-margin image-filtered");
+    for (let i = 0; i < xx.length; i++) {
+        let xxx = xx[i].getElementsByTagName("p");
+        xx[i].removeChild(xxx[0]);
+    }
+}
+/**
+ * 生成文件名，将作者放置到末尾
+ * @returns
+ */
+function make_img_filename__imgid_artist_to_end() {
+    let artist_list = new Array();
+    let img_mid;
+    let img_end;
 
-// // 确定图片名字
-// var y=document.getElementsByTagName("a");
-// var img_link;
-// for (var i=0;i<y.length;i++)
-// {
-//     if (y[i].title == "Download (tags in filename)")
-//     {
-//         img_link = y[i].href;
-//         console.log(img_link);
-//         //img_display_link=img_link;
-//         break;
-//     }
-// }
-// var j = img_link.lastIndexOf("/") +1 ;
-// var img_name = img_link.substring(j);
-// //target="_blank"
-
-// // 确定超链接信息
-// var display_download=document.createElement("a")
-// var textnode=document.createTextNode("DisplayDown")
-// display_download.appendChild(textnode)
-
-// //把显示图片链接键入href属性
-// var dispay_href=document.createAttribute("href");
-// dispay_href.value=img_display_link;
-// display_download.setAttributeNode(dispay_href);
-
-// /*
-// //键入新建窗口打开属性
-// var dispay_act1=document.createAttribute("target");
-// dispay_act1.value="_blank";
-// display_download.setAttributeNode(dispay_act1);
-// */
-
-// //把文件名键入download属性
-// var display_name = document.createAttribute("download");
-// display_name.value=img_name;
-// display_download.setAttributeNode(display_name);
-
-// //确定超链接位子
-// var parent = y[i].parentNode;
-// parent.insertBefore(display_download,y[i]);
+    function get_artist_list() { // ## 获取作者列表
+        let xx = document.getElementsByClassName("tag dropdown")
+        for (let i = 0; i < xx.length; i++) {
+            if (xx[i].getAttribute("data-tag-category") == "origin") {
+                artist_list.push(xx[i].getAttribute("data-tag-slug"));
+            }
+        }
+    }
+    function match_downloadele() {
+        let downloadele_head = img_id + "__" + img_rating + "_" + artist_list.join("_");
+        let ret = img_filename_from_download_ele.match(downloadele_head + "_" + "([\\w\\+]+)" + "." + "([\\w\\+]+)");
+        img_mid = ret[1];
+        img_end = ret[2];
+    }
 
 
-// console.log("img_display_link is %s \n", img_display_link);
-// console.log("img_name is %s \n", img_name);
-// console.log("display_download's href %s \n", display_download.href);
-// console.log("display_download's download %s \n", display_download.download);
+    get_artist_list();
+    console.log("[artist_list]=" + artist_list);
+    if (artist_list.length == 0) {
+        img_filename_for_buttom = img_filename_from_download_ele;
+
+    } else {
+        match_downloadele();
+        img_filename_for_buttom = img_mid + "__" + artist_list.join("_") + "__" + img_id + "." + img_end;
+    }
+}
+/**
+ * 制作下载按钮的文件名
+ */
+function make_img_filename_for_bottom() {
+    switch (name_format) {
+        case NameFormat.DOWNLOAD_ELE_ORG:
+            img_filename_for_buttom = img_filename_from_download_ele;
+            break;
+        case NameFormat.DOWNLOAD_ELE_REG:
+            make_img_filename__imgid_artist_to_end();
+            break;
+        default:
+            img_filename_for_buttom = img_filename_from_download_ele;
+    }
+}
+
+/**
+ * 设置下载按钮
+ */
+function set_download_button() {
+    let display_download = document.createElement("button");
+    let textnode = document.createTextNode("DisplayDown");
+    display_download.appendChild(textnode);
+    // display_download.addEventListener("click", "function()");
+    display_download.onclick = function () {
+        get_img_display_url();
+        console.log("[img_url_display]=" + img_url_display);
+        make_img_filename_for_bottom();
+        console.log("[img_filename_for_buttom]=" + img_filename_for_buttom);
+        download_start(img_url_display, img_filename_for_buttom);
+    }
+
+    let y = document.getElementsByTagName("a");
+    let parent = y[site_download_place].parentNode;
+    parent.insertBefore(display_download, y[site_download_place]);
+}
+
+
+get_img_filename_from_download_ele();
+console.log("[img_filename_for_buttom]=" + img_filename_from_download_ele);
+
+if (site_download_place > 0) {
+    get_img_id();
+    console.log("[img_id]=" + img_id);
+    get_img_rating();
+    console.log("[img_rating]=" + img_rating);
+    is_img_hidden();
+    console.log("[img_is_hidden]=" + img_is_hidden);
+    show_img();
+    set_download_button();
+}
+
