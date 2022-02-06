@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         derpibooru.org display download
 // @namespace    http://tampermonkey.net/
-// @version      1.1.2
+// @version      1.1.3
 // @description
 // @author       K
 // @include      http*://derpibooru.org/images/*
@@ -22,15 +22,54 @@ let img_is_hidden = false;
 let img_src_error;
 let img_url_display;    // 当前页面展示的图片链接
 let img_filename_from_download_ele;  // 页面下载所对应的url
-let img_filename_for_buttom;    // 用于按钮下载的文件名
-
+let img_filename_for_buttom;    // 用于按钮下载的文件名1，
+let old_title = document.title;
+let title_timer;
 let site_download_place = 0;
+
+// 修改title
+function change_title (string) {
+	// 本工具的提醒会以 [string] 形式添加到 title 最前面
+	/*
+	0	复原
+	↑	抓取中
+	→	等待下一步操作（tag搜索页）
+	▶ 	准备下载
+	↓	下载中
+	║	下载暂停
+	■	下载停止
+	√	下载完毕
+	*/
+	if (string === '0') {
+		clearInterval(title_timer);
+		document.title = old_title;
+		return false;
+	}
+	if (document.title[0] !== '[') { // 如果当前title里没有本脚本的提醒，就存储当前title为旧title
+		old_title = document.title;
+	}
+	let new_title = `[${string}] ${old_title}`;
+	document.title = new_title;
+	// 当可以执行下一步操作时，闪烁提醒
+	if (string === '▶' || string === '→') {
+		title_timer = setInterval(function () {
+			if (document.title.includes(string)) {
+				document.title = new_title.replace(string, ' ');
+			} else {
+				document.title = new_title;
+			}
+		}, 500);
+	} else {
+		clearInterval(title_timer);
+	}
+}
 
 /**
  * 跨域请求下载相应
  * @param {*} img_url
  */
 function download_start(img_url, file_name) {
+    change_title('↓');
     GM_xmlhttpRequest({
         method: 'GET',
         url: img_url, /// @@ 下载所对应的URL
@@ -64,6 +103,7 @@ function download_to_disk(blobURL, fullFileName) {
         name: fullFileName,
         onload: function () {
             window.URL.revokeObjectURL(blobURL);
+            change_title('√');
         }
     });
 }
